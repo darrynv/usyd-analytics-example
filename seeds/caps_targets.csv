@@ -1,0 +1,9 @@
+plan_year,cap_code,cap_type,scope_type,scope_code,measure,direction,target_value,description
+2026,CSP-C1,CSP funding envelope,funding_cluster,C1,CSP EFTSL,max,9580.0,"Managed growth target for cluster C1 (Law, business, humanities, creative arts); CGS is not paid above it"
+2026,CSP-C2,CSP funding envelope,funding_cluster,C2,CSP EFTSL,max,5550.0,"Managed growth target for cluster C2 (Education, nursing, IT, psychology); CGS is not paid above it"
+2026,CSP-C3,CSP funding envelope,funding_cluster,C3,CSP EFTSL,max,7450.0,"Managed growth target for cluster C3 (Science, engineering, health, built environment); CGS is not paid above it"
+2026,CSP-C4,CSP funding envelope,funding_cluster,C4,CSP EFTSL,max,1030.0,"Managed growth target for cluster C4 (Medicine, dentistry, veterinary science); CGS is not paid above it"
+2026,INTL-COMM,International planning level,university,ALL,International commencements,max,11300.0,Government-set cap on new overseas student commencements
+2026,EQ-LOWSES,Equity target,university,ALL,Low SES share of domestic UG commencements,min,0.15,Strategic target for low socio-economic status access
+2026,EQ-FIRSTNATIONS,Equity target,university,ALL,First Nations share of domestic UG commencements,min,0.03,Strategic target for First Nations participation
+2026,EQ-REGIONAL,Equity target,university,ALL,Regional and remote share of domestic UG commencements,min,0.18,Strategic target for regional and remote access

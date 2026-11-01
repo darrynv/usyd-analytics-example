@@ -1,0 +1,286 @@
+title: "Diagnostic: what changed between load profile iterations, and why?"
+text: |
+  Pick two versions of the load profile. Every change in EFTSL and revenue is split exactly into its drivers. Nothing is left as "other".
+  **Synthetic data.**
+
+  {{ queries.headline.one.sentence }}
+
+style:
+  charts:
+    category_colors:
+      movement:
+        values:
+          Decrease: "#C0392B"
+          Increase: "#2E8B57"
+          Net change: "#5B6770"
+
+variables:
+  comparison:
+    label: Compare
+    default: BUD26-Q1F26
+    options:
+      query: comparison_options
+      column: comparison_code
+      label_column: comparison_name
+  faculty:
+    options:
+      query: faculty_options
+      column: faculty_name
+
+queries:
+  comparison_options:
+    sql: |
+      select distinct comparison_code, comparison_name
+      from {{ ref('fct_load_variance') }}
+      order by comparison_code
+
+  faculty_options:
+    sql: select faculty_name from {{ ref('dim_faculty') }} order by faculty_name
+
+  totals:
+    sql: |
+      select sum(eftsl_b) as eftsl_base,
+             sum(eftsl_c) as eftsl_compare,
+             sum(eftsl_variance) as eftsl_variance,
+             sum(eftsl_variance) / sum(eftsl_b) as eftsl_variance_pct,
+             sum(revenue_c) as revenue_compare,
+             sum(revenue_variance) as revenue_variance,
+             sum(revenue_variance) / sum(revenue_b) as revenue_variance_pct
+      from {{ ref('fct_load_variance') }}
+      where {{ filter('comparison_code', comparison) }}
+        and {{ filter('faculty_name', faculty) }}
+    formats:
+      eftsl_base: integer
+      eftsl_compare: integer
+      eftsl_variance: delta
+      eftsl_variance_pct: percent_delta
+      revenue_compare: currency_compact
+      revenue_variance: currency_compact
+      revenue_variance_pct: percent_delta
+
+  headline:
+    sql: |
+      with d as (
+        select driver, sum(revenue_effect) as rev, sum(eftsl_effect) as eftsl
+        from {{ ref('fct_variance_bridge') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+        group by 1
+      ),
+      top_driver as (select * from d order by abs(rev) desc limit 1),
+      f as (
+        select faculty_name, sum(revenue_effect) as rev
+        from {{ ref('fct_variance_bridge') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+        group by 1
+      ),
+      top_fac as (select * from f order by abs(rev) desc limit 1)
+      select format(
+        '**Read-out:** revenue moves by %s. The biggest driver is **%s** (%s, %s EFTSL), and **%s** accounts for the most of it (%s).',
+        (case when (select sum(rev) from d) < 0 then '-$' else '+$' end || to_char(abs((select sum(rev) from d)) / 1e6, 'FM999,990.0') || 'M'),
+        lower(t.driver), (case when t.rev < 0 then '-$' else '+$' end || to_char(abs(t.rev) / 1e6, 'FM999,990.0') || 'M'), to_char(t.eftsl, 'FMS999,990'),
+        tf.faculty_name, (case when tf.rev < 0 then '-$' else '+$' end || to_char(abs(tf.rev) / 1e6, 'FM999,990.0') || 'M')
+      ) as sentence
+      from top_driver t cross join top_fac tf
+
+  eftsl_waterfall:
+    sql: |
+      with d as (
+        select driver_order, driver, sum(eftsl_effect) as effect
+        from {{ ref('fct_variance_bridge') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+          and driver <> 'Fee and funding rates'
+        group by 1, 2
+      ),
+      t as (
+        select sum(eftsl_b) as base, sum(eftsl_c) as comp
+        from {{ ref('fct_load_variance') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+      ),
+      steps as (
+        select driver_order as step_order, driver as step,
+               coalesce(sum(effect) over (order by driver_order rows between unbounded preceding and 1 preceding), 0) as bar_start,
+               sum(effect) over (order by driver_order rows between unbounded preceding and current row) as bar_end,
+               case when effect >= 0 then 'Increase' else 'Decrease' end as movement
+        from d
+        union all
+        select 9, 'Net change', 0, comp - base, 'Net change' from t
+      )
+      select step_order, step, bar_start, bar_end, movement from steps order by step_order
+    formats:
+      bar_start: delta
+      bar_end: delta
+
+  revenue_waterfall:
+    sql: |
+      with d as (
+        select driver_order, driver, sum(revenue_effect) as effect
+        from {{ ref('fct_variance_bridge') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+        group by 1, 2
+      ),
+      t as (
+        select sum(revenue_b) as base, sum(revenue_c) as comp
+        from {{ ref('fct_load_variance') }}
+        where {{ filter('comparison_code', comparison) }}
+          and {{ filter('faculty_name', faculty) }}
+      ),
+      steps as (
+        select driver_order as step_order, driver as step,
+               coalesce(sum(effect) over (order by driver_order rows between unbounded preceding and 1 preceding), 0) as bar_start,
+               sum(effect) over (order by driver_order rows between unbounded preceding and current row) as bar_end,
+               case when effect >= 0 then 'Increase' else 'Decrease' end as movement
+        from d
+        union all
+        select 9, 'Net change', 0, comp - base, 'Net change' from t
+      )
+      select step_order, step, bar_start, bar_end, movement from steps order by step_order
+    formats:
+      bar_start: currency_compact
+      bar_end: currency_compact
+
+  by_faculty:
+    sql: |
+      select faculty_name, driver, sum(eftsl_effect) as eftsl_effect
+      from {{ ref('fct_variance_bridge') }}
+      where {{ filter('comparison_code', comparison) }}
+        and {{ filter('faculty_name', faculty) }}
+        and driver <> 'Fee and funding rates'
+      group by 1, 2
+      order by 1, 2
+    formats:
+      eftsl_effect: delta
+
+  top_courses:
+    sql: |
+      select course_name as course, citizenship as citizenship,
+             round(eftsl_b) as base_eftsl, round(eftsl_c) as compared_eftsl,
+             round(eftsl_variance) as eftsl_change, revenue_variance as revenue_change
+      from {{ ref('fct_load_variance') }}
+      where {{ filter('comparison_code', comparison) }}
+        and {{ filter('faculty_name', faculty) }}
+      order by abs(revenue_variance) desc
+      limit 10
+    formats:
+      base_eftsl: integer
+      compared_eftsl: integer
+      eftsl_change: delta
+      revenue_change: currency_compact
+
+  assumptions:
+    sql: |
+      select course_name as course, citizenship as citizenship, assumption as assumption,
+             round(base_value, 3) as was, round(compare_value, 3) as now,
+             change_pct as change, revenue_impact as revenue_impact
+      from {{ ref('fct_assumption_changes') }}
+      where {{ filter('comparison_code', comparison) }}
+        and {{ filter('faculty_name', faculty) }}
+      order by abs(revenue_impact) desc
+      limit 12
+    formats:
+      change: percent_delta
+      revenue_impact: currency_compact
+
+charts:
+  kpi_eftsl:
+    type: kpi
+    query: totals
+    value: eftsl_compare
+    label: EFTSL in compared version
+    support:
+      value: eftsl_variance
+      label: EFTSL vs base
+    style:
+      support:
+        format: delta
+  kpi_eftsl_pct:
+    type: kpi
+    query: totals
+    value: eftsl_variance_pct
+    label: EFTSL change
+  kpi_revenue:
+    type: kpi
+    query: totals
+    value: revenue_compare
+    label: Revenue in compared version
+    support:
+      value: revenue_variance
+      label: vs base
+    style:
+      support:
+        format: currency_compact
+  kpi_revenue_pct:
+    type: kpi
+    query: totals
+    value: revenue_variance_pct
+    label: Revenue change
+
+  eftsl_bridge:
+    type: bar
+    query: eftsl_waterfall
+    title: EFTSL change, driver by driver
+    subtitle: Each bar starts where the previous driver ended; the last bar is the net change
+    x: step
+    y: bar_end
+    y_start: bar_start
+    color: movement
+    sort:
+      by: step_order
+      order: asc
+    field_labels:
+      step: Step
+      bar_end: EFTSL change
+      movement: Movement
+
+  revenue_bridge:
+    type: bar
+    query: revenue_waterfall
+    title: Revenue change, driver by driver
+    subtitle: Fee and funding rate changes only affect revenue
+    x: step
+    y: bar_end
+    y_start: bar_start
+    color: movement
+    sort:
+      by: step_order
+      order: asc
+    field_labels:
+      step: Step
+      bar_end: Revenue change
+      movement: Movement
+
+  faculty_drivers:
+    type: bar
+    query: by_faculty
+    title: EFTSL change by faculty and driver
+    subtitle: Which faculties moved, and for what reason
+    x: faculty_name
+    y: eftsl_effect
+    color: driver
+    field_labels:
+      faculty_name: Faculty
+      eftsl_effect: EFTSL change
+      driver: Driver
+    style:
+      orientation: horizontal
+
+  courses_table:
+    type: table
+    query: top_courses
+
+  assumptions_table:
+    type: table
+    query: assumptions
+
+rows:
+  - cols: [kpi_eftsl, kpi_eftsl_pct, kpi_revenue, kpi_revenue_pct]
+  - cols: [eftsl_bridge, revenue_bridge]
+  - faculty_drivers
+  - title: Ten largest course-level changes
+    rows: [courses_table]
+  - title: "What changed: the assumptions behind it"
+    rows: [assumptions_table]

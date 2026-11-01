@@ -1,0 +1,201 @@
+title: "Prescriptive: what do we need to do to meet the caps and targets?"
+text: |
+  **Synthetic data.** Each 2026 plan version checked against CSP funding envelopes, the international planning level and equity targets,
+  with rule-based actions to close each gap.
+
+variables:
+  version:
+    label: Plan version
+    default: Q2F26
+    options:
+      query: version_options
+      column: version_code
+      label_column: version_name
+  low_ses_target:
+    label: Low SES target (% of domestic UG commencements)
+    min: 10
+    max: 25
+    step: 0.5
+    default: 15
+
+queries:
+  version_options:
+    sql: |
+      select version_code, version_name from {{ ref('dim_version') }}
+      where plan_year = 2026 order by sort_order
+
+  kpis:
+    sql: |
+      select
+        count(*) filter (where status <> 'On track') as caps_missed,
+        count(*) as caps_total,
+        coalesce(sum(unfunded_cgs_revenue), 0) as unfunded_revenue,
+        max(target_value - plan_value) filter (where cap_code = 'INTL-COMM') as intl_headroom,
+        max(plan_value) filter (where cap_code = 'EQ-LOWSES') as low_ses_share
+      from {{ ref('fct_cap_position') }}
+      where {{ filter('version_code', version) }}
+    formats:
+      caps_missed: integer
+      unfunded_revenue: currency_compact
+      intl_headroom: delta
+      low_ses_share: percent
+
+  read_out:
+    sql: |
+      with r as (
+        select * from {{ ref('fct_intake_recommendations') }} where {{ filter('version_code', version) }}
+      )
+      select format(
+        '**Recommended moves:** %s CSP places from over-envelope clusters to clusters with headroom (%s), and %s spare international places (%s). Equity targets need %s more commencements from under-represented groups within the planned intake.',
+        to_char(coalesce(sum(-places) filter (where lever = 'CSP funding envelope' and places < 0), 0), 'FM999,990'),
+        case when sum(revenue_impact) filter (where lever = 'CSP funding envelope') >= 0 then '+$' else '-$' end
+          || to_char(abs(coalesce(sum(revenue_impact) filter (where lever = 'CSP funding envelope'), 0)) / 1e6, 'FM990.0') || 'M',
+        to_char(coalesce(sum(places) filter (where lever = 'International planning level'), 0), 'FMS999,990'),
+        case when coalesce(sum(revenue_impact) filter (where lever = 'International planning level'), 0) >= 0 then '+$' else '-$' end
+          || to_char(abs(coalesce(sum(revenue_impact) filter (where lever = 'International planning level'), 0)) / 1e6, 'FM990.0') || 'M',
+        to_char(coalesce(sum(places) filter (where lever = 'Equity target'), 0), 'FM999,990')
+      ) as sentence
+      from r
+
+  csp_clusters:
+    sql: |
+      select 'Cluster ' || scope_code as cluster, plan_value as planned_eftsl, target_value as envelope, status
+      from {{ ref('fct_cap_position') }}
+      where {{ filter('version_code', version) }} and cap_type = 'CSP funding envelope'
+      order by scope_code
+    formats:
+      planned_eftsl: integer
+      envelope: integer
+
+  equity:
+    sql: |
+      select replace(measure, ' share of domestic UG commencements', '') as equity_group,
+             plan_value as planned_share, target_value as target_share
+      from {{ ref('fct_cap_position') }}
+      where {{ filter('version_code', version) }} and cap_type = 'Equity target'
+      order by measure
+    formats:
+      planned_share: percent
+      target_share: percent
+
+  low_ses_need:
+    sql: |
+      select faculty_name,
+             greatest(sum(commencing_intake) * {{ low_ses_target }} / 100.0 - sum(commencing_intake * low_ses_share), 0) as places_needed,
+             sum(commencing_intake * low_ses_share) / sum(commencing_intake) as current_share
+      from {{ ref('fct_load_profile') }}
+      where plan_year = 2026 and {{ filter('version_code', version) }}
+        and citizenship = 'Domestic' and course_level = 'UG' and funding_type = 'CSP'
+      group by 1
+      order by 2 desc
+    formats:
+      places_needed: integer
+      current_share: percent
+
+  low_ses_total:
+    sql: |
+      select sum(places_needed) as places_needed from {{ queries.low_ses_need }}
+    formats:
+      places_needed: integer
+
+  actions:
+    sql: |
+      select priority, lever, scope_name as scope, action, places, eftsl_impact, revenue_impact
+      from {{ ref('fct_intake_recommendations') }}
+      where {{ filter('version_code', version) }} and lever <> 'Equity target'
+      order by priority
+    formats:
+      priority: integer
+      places: delta
+      eftsl_impact: delta
+      revenue_impact: currency_compact
+
+charts:
+  kpi_caps:
+    type: kpi
+    query: kpis
+    value: caps_missed
+    label: Caps and targets missed (of 8)
+  kpi_unfunded:
+    type: kpi
+    query: kpis
+    value: unfunded_revenue
+    label: CSP load above envelopes (no CGS paid)
+  kpi_intl:
+    type: kpi
+    query: kpis
+    value: intl_headroom
+    label: International places under the cap
+  kpi_lowses_needed:
+    type: kpi
+    query: low_ses_total
+    value: places_needed
+    label: Low SES places needed for the target
+
+  clusters:
+    type: bar
+    query: csp_clusters
+    title: CSP load against funding envelopes
+    subtitle: Bars are planned EFTSL; dots mark each cluster's envelope
+    x: cluster
+    y: planned_eftsl
+    color: status
+    layers:
+      - type: scatter
+        y: envelope
+        label: Envelope
+        style:
+          marks:
+            point:
+              color: "#1F2A33"
+    field_labels:
+      cluster: Cluster
+      planned_eftsl: Planned EFTSL
+      status: Status
+
+  equity_chart:
+    type: bar
+    query: equity
+    title: Equity groups, planned vs target
+    x: equity_group
+    y: [planned_share, target_share]
+    field_labels:
+      equity_group: Group
+      planned_share: Planned
+      target_share: Target
+
+  low_ses_chart:
+    type: bar
+    query: low_ses_need
+    title: Low SES places needed by faculty
+    subtitle: Move the target slider to see what each faculty must deliver
+    x: faculty_name
+    y: places_needed
+    field_labels:
+      faculty_name: Faculty
+      places_needed: Places needed
+    style:
+      orientation: horizontal
+      color:
+        categorical:
+          single_series_palette: ["#3F6399"]
+
+  actions_table:
+    type: table
+    query: actions
+
+style:
+  charts:
+    category_colors:
+      status:
+        values:
+          Over cap: "#C0392B"
+          On track: "#2E8B57"
+
+rows:
+  - cols: [kpi_caps, kpi_unfunded, kpi_intl, kpi_lowses_needed]
+  - text: "{{ queries.read_out.one.sentence }}"
+  - cols: [clusters, equity_chart]
+  - low_ses_chart
+  - title: Recommended intake actions (CSP envelopes and international cap)
+    rows: [actions_table]

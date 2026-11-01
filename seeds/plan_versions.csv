@@ -1,0 +1,6 @@
+version_code,version_name,version_type,plan_year,published_on,sort_order
+ACT,Actuals,Actual,,,0
+BUD25,Budget 2025,Budget,2025,2024-11-29,1
+BUD26,Budget 2026,Budget,2026,2025-11-28,2
+Q1F26,Q1 Forecast 2026,Forecast,2026,2026-04-17,3
+Q2F26,Q2 Forecast 2026,Forecast,2026,2026-07-24,4

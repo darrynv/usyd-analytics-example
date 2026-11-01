@@ -1,0 +1,229 @@
+title: "Descriptive: what has happened to our student load?"
+text: |
+  Census actuals 2019–2025 plus 2026 Semester 1. **Synthetic data**: generic faculties, illustrative funding rates, no real students.
+
+  EFTSL = equivalent full-time student load. Filter by faculty or citizenship; every chart below responds.
+
+variables:
+  faculty:
+    options:
+      query: faculty_options
+      column: faculty_name
+  citizenship:
+    options:
+      static: [Domestic, International]
+
+queries:
+  faculty_options:
+    sql: select faculty_name from {{ ref('dim_faculty') }} order by faculty_name
+
+  kpis:
+    sql: |
+      with y as (
+        select plan_year,
+               sum(eftsl) as eftsl,
+               sum(commencing_intake) filter (where citizenship = 'International') / sum(commencing_intake) as intl_share
+        from {{ ref('fct_load_profile') }}
+        where version_code = 'ACT'
+          and {{ filter('faculty_name', faculty) }}
+          and {{ filter('citizenship', citizenship) }}
+        group by 1
+      ),
+      s1 as (
+        select census_year, sum(eftsl) as eftsl
+        from {{ ref('fct_load_actuals_term') }}
+        where term = 'S1' and census_year in (2025, 2026)
+          and {{ filter('faculty_name', faculty) }}
+          and {{ filter('citizenship', citizenship) }}
+        group by 1
+      )
+      select
+        (select eftsl from y where plan_year = 2025) as eftsl_2025,
+        (select eftsl from y where plan_year = 2025) / (select eftsl from y where plan_year = 2019) - 1 as growth_since_2019,
+        (select intl_share from y where plan_year = 2025) as intl_share_2025,
+        (select intl_share from y where plan_year = 2025) - (select intl_share from y where plan_year = 2019) as intl_share_change,
+        (select eftsl from s1 where census_year = 2026) as s1_2026,
+        (select eftsl from s1 where census_year = 2026) / (select eftsl from s1 where census_year = 2025) - 1 as s1_yoy
+    formats:
+      eftsl_2025: integer
+      growth_since_2019: percent_delta
+      intl_share_2025: percent
+      intl_share_change: percentage_points_delta
+      s1_2026: integer
+      s1_yoy: percent_delta
+
+  by_faculty:
+    sql: |
+      select make_date(plan_year, 1, 1) as year, faculty_name, sum(eftsl) as eftsl
+      from {{ ref('fct_load_profile') }}
+      where version_code = 'ACT'
+        and {{ filter('faculty_name', faculty) }}
+        and {{ filter('citizenship', citizenship) }}
+      group by 1, 2
+      order by 1, 2
+    formats:
+      eftsl: integer
+
+  by_citizenship:
+    sql: |
+      select make_date(plan_year, 1, 1) as year, citizenship, sum(eftsl) as eftsl
+      from {{ ref('fct_load_profile') }}
+      where version_code = 'ACT'
+        and {{ filter('faculty_name', faculty) }}
+        and {{ filter('citizenship', citizenship) }}
+      group by 1, 2
+      order by 1, 2
+    formats:
+      eftsl: integer
+
+  growth_heatmap:
+    sql: |
+      with f as (
+        select plan_year, faculty_name, sum(eftsl) as eftsl
+        from {{ ref('fct_load_profile') }}
+        where version_code = 'ACT'
+          and {{ filter('faculty_name', faculty) }}
+          and {{ filter('citizenship', citizenship) }}
+        group by 1, 2
+      )
+      select plan_year::text as year, faculty_name,
+             eftsl / lag(eftsl) over (partition by faculty_name order by plan_year) - 1 as yoy_growth
+      from f
+      order by faculty_name, plan_year
+    formats:
+      yoy_growth: percent_delta
+
+  equity:
+    sql: |
+      select make_date(census_year, 1, 1) as year,
+             sum(hc_low_ses)::numeric / sum(headcount) as low_ses,
+             sum(hc_regional)::numeric / sum(headcount) as regional_remote,
+             sum(hc_first_nations)::numeric / sum(headcount) as first_nations
+      from {{ ref('fct_load_actuals_term') }}
+      where term = 'S1' and commencement_status = 'Commencing' and citizenship = 'Domestic'
+        and course_level = 'UG' and funding_type = 'CSP'
+        and {{ filter('faculty_name', faculty) }}
+      group by 1
+      order by 1
+    formats:
+      low_ses: percent
+      regional_remote: percent
+      first_nations: percent
+
+  semester_one:
+    sql: |
+      select census_year::text as census_year, course_level, sum(eftsl) as eftsl
+      from {{ ref('fct_load_actuals_term') }}
+      where term = 'S1'
+        and {{ filter('faculty_name', faculty) }}
+        and {{ filter('citizenship', citizenship) }}
+      group by 1, 2
+      order by 1, 2
+    formats:
+      eftsl: integer
+
+charts:
+  kpi_eftsl:
+    type: kpi
+    query: kpis
+    value: eftsl_2025
+    label: "EFTSL, 2025"
+    support:
+      value: growth_since_2019
+      label: since 2019
+    style:
+      support:
+        format: percent_delta
+  kpi_intl:
+    type: kpi
+    query: kpis
+    value: intl_share_2025
+    label: "International share of commencements, 2025"
+    support:
+      value: intl_share_change
+      label: since 2019
+    style:
+      support:
+        format: percentage_points_delta
+  kpi_s1:
+    type: kpi
+    query: kpis
+    value: s1_2026
+    label: "Semester 1 2026 EFTSL"
+    support:
+      value: s1_yoy
+      label: vs Semester 1 2025
+    style:
+      support:
+        format: percent_delta
+
+  faculty_trend:
+    type: line
+    query: by_faculty
+    title: EFTSL by faculty
+    subtitle: Business and Engineering carried the post-COVID recovery
+    x: year
+    y: eftsl
+    color: faculty_name
+    field_labels:
+      faculty_name: Faculty
+      eftsl: EFTSL
+
+  citizenship_mix:
+    type: area
+    query: by_citizenship
+    title: Domestic and international load
+    subtitle: International load fell by a third in 2021 and has since recovered
+    x: year
+    y: eftsl
+    color: citizenship
+    field_labels:
+      eftsl: EFTSL
+
+  growth:
+    type: heatmap
+    query: growth_heatmap
+    title: Year-on-year EFTSL growth
+    subtitle: Where growth came from, faculty by faculty
+    x: year
+    y: faculty_name
+    color: yoy_growth
+    field_labels:
+      faculty_name: Faculty
+      yoy_growth: Growth
+    style:
+      color:
+        gradient:
+          palette: dbt-div-crimson-green
+          hinge: 0
+
+  equity_trend:
+    type: line
+    query: equity
+    title: Equity groups among domestic undergraduate commencements
+    subtitle: Low SES and regional access are rising slowly; First Nations is flat
+    x: year
+    y: [low_ses, regional_remote, first_nations]
+    field_labels:
+      low_ses: Low SES
+      regional_remote: Regional and remote
+      first_nations: First Nations
+
+  s1_compare:
+    type: bar
+    query: semester_one
+    title: Semester 1 EFTSL by course level
+    subtitle: 2026 is the latest census
+    x: census_year
+    y: eftsl
+    color: course_level
+    field_labels:
+      census_year: Year
+      course_level: Level
+      eftsl: EFTSL
+
+rows:
+  - cols: [kpi_eftsl, kpi_intl, kpi_s1]
+  - faculty_trend
+  - cols: [citizenship_mix, s1_compare]
+  - cols: [growth, equity_trend]

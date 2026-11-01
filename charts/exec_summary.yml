@@ -1,0 +1,218 @@
+title: "Student load 2026: executive summary"
+text: |
+  **Synthetic data, illustrative only.** Q2 Forecast 2026 against Budget 2026, as at week {{ queries.headline.one.week }} of the 2027 admissions cycle.
+  Every number on this page is queried live from the warehouse. The commentary was drafted by Claude from those results and is reviewed by a planner before it goes out.
+
+queries:
+  headline:
+    sql: |
+      with v as (
+        select sum(eftsl_b) as eftsl_b, sum(eftsl_c) as eftsl_c, sum(revenue_b) as rev_b, sum(revenue_c) as rev_c
+        from {{ ref('fct_load_variance') }} where comparison_code = 'BUD26-Q2F26'
+      ),
+      intl as (
+        select target_value - plan_value as headroom from {{ ref('fct_cap_position') }}
+        where version_code = 'Q2F26' and cap_code = 'INTL-COMM'
+      ),
+      csp as (
+        select sum(unfunded_cgs_revenue) as unfunded from {{ ref('fct_cap_position') }}
+        where version_code = 'Q2F26'
+      ),
+      nc as (
+        select week_of_cycle as week, projected_commencing, projected_low, projected_high
+        from {{ ref('fct_csp_nowcast') }}
+        where is_current_cycle and faculty_code = 'ALL'
+        order by week_of_cycle desc limit 1
+      ),
+      c26 as (
+        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        where intake_year = 2026 and faculty_code = 'ALL'
+      )
+      select
+        v.eftsl_c, v.eftsl_c - v.eftsl_b as eftsl_vs_budget,
+        v.rev_c, v.rev_c - v.rev_b as revenue_vs_budget,
+        intl.headroom as intl_headroom,
+        nc.week, nc.projected_commencing, nc.projected_commencing / c26.census - 1 as nowcast_growth,
+        to_char(abs(v.rev_c - v.rev_b) / 1e6, 'FM990') as rev_gap_m,
+        to_char(abs(v.eftsl_c - v.eftsl_b), 'FM999,990') as eftsl_gap,
+        to_char(csp.unfunded / 1e6, 'FM990.0') as unfunded_m,
+        to_char(intl.headroom, 'FM999,990') as headroom_txt,
+        to_char(nc.projected_low, 'FM999,990') as nc_low,
+        to_char(nc.projected_high, 'FM999,990') as nc_high,
+        to_char((nc.projected_commencing / c26.census - 1) * 100, 'FM990') as nc_growth_pct
+      from v cross join intl cross join csp cross join nc cross join c26
+    formats:
+      eftsl_c: integer
+      eftsl_vs_budget: delta
+      rev_c: currency_compact
+      revenue_vs_budget: currency_compact
+      intl_headroom: delta
+      projected_commencing: integer
+      nowcast_growth: percent_delta
+
+  bridge:
+    sql: |
+      with d as (
+        select driver_order, driver, sum(revenue_effect) as effect
+        from {{ ref('fct_variance_bridge') }}
+        where comparison_code = 'BUD26-Q2F26'
+        group by 1, 2
+      )
+      select driver_order, driver,
+             coalesce(sum(effect) over (order by driver_order rows between unbounded preceding and 1 preceding), 0) as bar_start,
+             sum(effect) over (order by driver_order rows between unbounded preceding and current row) as bar_end,
+             case when effect >= 0 then 'Increase' else 'Decrease' end as movement
+      from d
+      union all
+      select 9, 'Net change', 0, sum(effect), 'Net change' from d
+      order by 1
+    formats:
+      bar_start: currency_compact
+      bar_end: currency_compact
+
+  faculty_gap:
+    sql: |
+      select faculty_name, sum(revenue_variance) as revenue_vs_budget
+      from {{ ref('fct_load_variance') }}
+      where comparison_code = 'BUD26-Q2F26'
+      group by 1
+      order by 2
+    formats:
+      revenue_vs_budget: currency_compact
+
+  trend:
+    sql: |
+      select make_date(plan_year, 1, 1) as year, 'Actual' as series, sum(eftsl) as eftsl
+      from {{ ref('fct_load_profile') }} where version_code = 'ACT' group by 1
+      union all
+      select make_date(2025, 1, 1), 'Q2 Forecast', sum(eftsl)
+      from {{ ref('fct_load_profile') }} where version_code = 'ACT' and plan_year = 2025
+      union all
+      select make_date(2026, 1, 1), 'Q2 Forecast', sum(eftsl)
+      from {{ ref('fct_load_profile') }} where version_code = 'Q2F26'
+      union all
+      select make_date(2025, 1, 1), 'Budget', sum(eftsl)
+      from {{ ref('fct_load_profile') }} where version_code = 'ACT' and plan_year = 2025
+      union all
+      select make_date(2026, 1, 1), 'Budget', sum(eftsl)
+      from {{ ref('fct_load_profile') }} where version_code = 'BUD26'
+      order by 1, 2
+    formats:
+      eftsl: integer
+
+charts:
+  kpi_eftsl:
+    type: kpi
+    query: headline
+    value: eftsl_c
+    label: 2026 EFTSL (Q2 Forecast)
+    support:
+      value: eftsl_vs_budget
+      label: vs Budget
+    style:
+      support:
+        format: delta
+  kpi_revenue:
+    type: kpi
+    query: headline
+    value: rev_c
+    label: 2026 load revenue
+    support:
+      value: revenue_vs_budget
+      label: vs Budget
+    style:
+      support:
+        format: currency_compact
+  kpi_intl:
+    type: kpi
+    query: headline
+    value: intl_headroom
+    label: Unused international places under the cap
+  kpi_nowcast:
+    type: kpi
+    query: headline
+    value: projected_commencing
+    label: 2027 CSP commencements (nowcast)
+    support:
+      value: nowcast_growth
+      label: vs 2026
+    style:
+      support:
+        format: percent_delta
+
+  revenue_bridge:
+    type: bar
+    query: bridge
+    title: Why revenue is below Budget
+    subtitle: Budget 2026 to Q2 Forecast, driver by driver
+    x: driver
+    y: bar_end
+    y_start: bar_start
+    color: movement
+    sort:
+      by: driver_order
+      order: asc
+    field_labels:
+      driver: Driver
+      bar_end: Revenue change
+      movement: Movement
+
+  faculty_chart:
+    type: bar
+    query: faculty_gap
+    title: Where the gap sits
+    subtitle: Revenue vs Budget by faculty
+    x: faculty_name
+    y: revenue_vs_budget
+    field_labels:
+      faculty_name: Faculty
+      revenue_vs_budget: Revenue vs Budget
+    style:
+      orientation: horizontal
+      color:
+        categorical:
+          single_series_palette: ["#3F6399"]
+
+  trend_chart:
+    type: line
+    query: trend
+    title: Load is flat after three years of growth
+    subtitle: Total EFTSL, actuals to 2025, then Budget and Q2 Forecast for 2026
+    x: year
+    y: eftsl
+    color: series
+    field_labels:
+      eftsl: EFTSL
+      series: Series
+
+style:
+  charts:
+    category_colors:
+      movement:
+        values:
+          Decrease: "#C0392B"
+          Increase: "#2E8B57"
+          Net change: "#5B6770"
+
+rows:
+  - cols: [kpi_eftsl, kpi_revenue, kpi_intl, kpi_nowcast]
+  - text: |
+      ### Three things to know
+
+      1. **We are ${{ queries.headline.one.rev_gap_m }}M and {{ queries.headline.one.eftsl_gap }} EFTSL behind Budget.** Most of the gap is fewer international
+         commencements in Business and Engineering, plus Engineering students taking lighter study loads. A small Arts retention dip adds to it.
+      2. **We are teaching load that earns no Commonwealth funding.** Science-heavy cluster C3 (and, narrowly, C4) is over its envelope, worth
+         about ${{ queries.headline.one.unfunded_m }}M in CGS we will not receive. At the same time {{ queries.headline.one.headroom_txt }} international places sit unused under the cap.
+      3. **2027 domestic demand looks strong.** Applications point to about {{ queries.headline.one.nc_growth_pct }}% more CSP commencements
+         than 2026 (range {{ queries.headline.one.nc_low }} to {{ queries.headline.one.nc_high }}), which would push cluster C3 further over its envelope unless intake is rebalanced.
+  - cols: [revenue_bridge, faculty_chart]
+  - trend_chart
+  - text: |
+      ### What we recommend
+
+      - **Rebalance CSP intake** from cluster C3 toward cluster C2, which has funded headroom, for 2027 offers. See the *Prescriptive* board for places by cluster.
+      - **Use international headroom** in mid-year intakes, starting with the highest revenue-per-place programs.
+      - **Hold the 2027 domestic offer round** against the nowcast, not last year's conversion, and re-check weekly as applications arrive.
+      - **Lift equity access** within the planned intake. Low SES, First Nations and regional shares are all below target.
+
+      *Detail: Descriptive (trends), Diagnostic (what changed and why), Predictive (what-if and nowcast) and Prescriptive (caps and actions) boards.*

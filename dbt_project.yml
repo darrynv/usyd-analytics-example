@@ -1,0 +1,33 @@
+name: usyd_analytics
+version: "1.0.0"
+profile: usyd_analytics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+seeds:
+  usyd_analytics:
+    +schema: raw
+    plan_versions:
+      +column_types:
+        plan_year: integer
+        published_on: date
+    load_assumptions:
+      +column_types:
+        low_ses_share: numeric
+        first_nations_share: numeric
+        regional_share: numeric
+
+models:
+  usyd_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: analytics
+      +materialized: table

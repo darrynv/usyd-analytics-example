@@ -1,0 +1,8 @@
+# dbt Charts project configuration.
+# Boards query the dbt marts with {{ ref('...') }} through the read-only `reader`
+# target in profiles.yml (credentials come from .env, never from YAML).
+sources:
+  warehouse:
+    type: dbt_profile
+    profile: usyd_analytics
+    target: reader

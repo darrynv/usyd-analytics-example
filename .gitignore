@@ -1,0 +1,19 @@
+# secrets
+.env
+# python / uv
+.venv/
+__pycache__/
+# dbt
+target/
+dbt_packages/
+logs/
+# dbt Charts
+.dct/
+*.png
+!docs/img/*.png
+renders/
+*.duckdb
+# generated locally (dbt anonymous id; agent skills installed by `dct init`)
+.user.yml
+.agents/
+.claude/skills/dct-*/
