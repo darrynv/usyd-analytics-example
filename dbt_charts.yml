@@ -1,6 +1,7 @@
 # dbt Charts project configuration.
-# Boards query the dbt marts with {{ ref('...') }} through the read-only `reader`
-# target in profiles.yml (credentials come from .env, never from YAML).
+# Boards query the dbt marts as analytics.<model>. Locally they connect through the
+# read-only `reader` target in profiles.yml (credentials come from .env, never from YAML);
+# on dbtcharts.com the `warehouse` source is mapped to the dbtcharts_reader connection.
 sources:
   warehouse:
     type: dbt_profile

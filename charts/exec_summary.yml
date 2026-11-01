@@ -8,24 +8,24 @@ queries:
     sql: |
       with v as (
         select sum(eftsl_b) as eftsl_b, sum(eftsl_c) as eftsl_c, sum(revenue_b) as rev_b, sum(revenue_c) as rev_c
-        from {{ ref('fct_load_variance') }} where comparison_code = 'BUD26-Q2F26'
+        from analytics.fct_load_variance where comparison_code = 'BUD26-Q2F26'
       ),
       intl as (
-        select target_value - plan_value as headroom from {{ ref('fct_cap_position') }}
+        select target_value - plan_value as headroom from analytics.fct_cap_position
         where version_code = 'Q2F26' and cap_code = 'INTL-COMM'
       ),
       csp as (
-        select sum(unfunded_cgs_revenue) as unfunded from {{ ref('fct_cap_position') }}
+        select sum(unfunded_cgs_revenue) as unfunded from analytics.fct_cap_position
         where version_code = 'Q2F26'
       ),
       nc as (
         select week_of_cycle as week, projected_commencing, projected_low, projected_high
-        from {{ ref('fct_csp_nowcast') }}
+        from analytics.fct_csp_nowcast
         where is_current_cycle and faculty_code = 'ALL'
         order by week_of_cycle desc limit 1
       ),
       c26 as (
-        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        select max(census_commencing) as census from analytics.fct_csp_nowcast
         where intake_year = 2026 and faculty_code = 'ALL'
       )
       select
@@ -54,7 +54,7 @@ queries:
     sql: |
       with d as (
         select driver_order, driver, sum(revenue_effect) as effect
-        from {{ ref('fct_variance_bridge') }}
+        from analytics.fct_variance_bridge
         where comparison_code = 'BUD26-Q2F26'
         group by 1, 2
       )
@@ -73,7 +73,7 @@ queries:
   faculty_gap:
     sql: |
       select faculty_name, sum(revenue_variance) as revenue_vs_budget
-      from {{ ref('fct_load_variance') }}
+      from analytics.fct_load_variance
       where comparison_code = 'BUD26-Q2F26'
       group by 1
       order by 2
@@ -83,19 +83,19 @@ queries:
   trend:
     sql: |
       select make_date(plan_year, 1, 1) as year, 'Actual' as series, sum(eftsl) as eftsl
-      from {{ ref('fct_load_profile') }} where version_code = 'ACT' group by 1
+      from analytics.fct_load_profile where version_code = 'ACT' group by 1
       union all
       select make_date(2025, 1, 1), 'Q2 Forecast', sum(eftsl)
-      from {{ ref('fct_load_profile') }} where version_code = 'ACT' and plan_year = 2025
+      from analytics.fct_load_profile where version_code = 'ACT' and plan_year = 2025
       union all
       select make_date(2026, 1, 1), 'Q2 Forecast', sum(eftsl)
-      from {{ ref('fct_load_profile') }} where version_code = 'Q2F26'
+      from analytics.fct_load_profile where version_code = 'Q2F26'
       union all
       select make_date(2025, 1, 1), 'Budget', sum(eftsl)
-      from {{ ref('fct_load_profile') }} where version_code = 'ACT' and plan_year = 2025
+      from analytics.fct_load_profile where version_code = 'ACT' and plan_year = 2025
       union all
       select make_date(2026, 1, 1), 'Budget', sum(eftsl)
-      from {{ ref('fct_load_profile') }} where version_code = 'BUD26'
+      from analytics.fct_load_profile where version_code = 'BUD26'
       order by 1, 2
     formats:
       eftsl: integer
