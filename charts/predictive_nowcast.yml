@@ -1,0 +1,156 @@
+title: "Predictive: where will 2027 CSP commencements land?"
+text: |
+  **Synthetic data.**
+  Applications for the 2027 intake are at **week {{ queries.nowcast_kpis.one.current_week }} of 30**. Past cycles show how
+  many census commencements each application has turned into by this point, so today's applications already point to the final number.
+
+  **{{ queries.nowcast_kpis.one.read_out }}**
+
+variables:
+  scope:
+    label: Faculty
+    default: University
+    options:
+      query: scope_options
+      column: faculty_name
+
+queries:
+  scope_options:
+    sql: |
+      select faculty_name from (
+        select distinct faculty_name, faculty_code = 'ALL' as is_all from {{ ref('fct_csp_nowcast') }}
+      ) s order by is_all desc, faculty_name
+
+  nowcast_kpis:
+    sql: |
+      with cur as (
+        select * from {{ ref('fct_csp_nowcast') }}
+        where is_current_cycle and {{ filter('faculty_name', scope) }}
+        order by week_of_cycle desc limit 1
+      ),
+      last_year as (
+        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        where intake_year = 2026 and {{ filter('faculty_name', scope) }}
+      ),
+      bt as (
+        select avg(abs(backtest_error_pct)) as mae from {{ ref('fct_csp_nowcast') }}
+        where not is_current_cycle and week_of_cycle = (select week_of_cycle from cur)
+          and {{ filter('faculty_name', scope) }}
+      )
+      select cur.week_of_cycle as current_week,
+             cur.projected_commencing,
+             cur.projected_commencing / last_year.census - 1 as vs_2026,
+             cur.projected_low, cur.projected_high,
+             bt.mae as backtest_mae,
+             'Projected 2027 commencements: ' || to_char(cur.projected_commencing, 'FM999,990')
+               || ' (range ' || to_char(cur.projected_low, 'FM999,990') || ' to ' || to_char(cur.projected_high, 'FM999,990')
+               || '), ' || to_char((cur.projected_commencing / last_year.census - 1) * 100, 'FMS990.0')
+               || '% on 2026. At this week, the method was out by ' || to_char(bt.mae * 100, 'FM990.0')
+               || '% on average in past cycles.' as read_out
+      from cur cross join last_year cross join bt
+    formats:
+      projected_commencing: integer
+      vs_2026: percent_delta
+      projected_low: integer
+      projected_high: integer
+      backtest_mae: percent
+
+  app_curves:
+    sql: |
+      select week_of_cycle, intake_year::text as intake, applications_cum
+      from {{ ref('fct_csp_nowcast') }}
+      where intake_year >= 2023 and {{ filter('faculty_name', scope) }}
+      order by intake_year, week_of_cycle
+    formats:
+      applications_cum: integer
+
+  projection:
+    sql: |
+      select n.week_of_cycle, n.projected_commencing, n.projected_low, n.projected_high, l.census as census_2026
+      from {{ ref('fct_csp_nowcast') }} n
+      cross join (
+        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        where intake_year = 2026 and {{ filter('faculty_name', scope) }}
+      ) l
+      where n.is_current_cycle and {{ filter('faculty_name', scope) }}
+      order by n.week_of_cycle
+    formats:
+      projected_commencing: integer
+      projected_low: integer
+      projected_high: integer
+      census_2026: integer
+
+  backtest:
+    sql: |
+      select intake_year::text as intake_year, census_commencing, round(backtest_projection) as predicted_at_this_week,
+             backtest_error_pct as error
+      from {{ ref('fct_csp_nowcast') }}
+      where not is_current_cycle and {{ filter('faculty_name', scope) }}
+        and week_of_cycle = (select max(week_of_cycle) from {{ ref('fct_csp_nowcast') }} where is_current_cycle)
+      order by intake_year
+    formats:
+      census_commencing: integer
+      predicted_at_this_week: integer
+      error: percent_delta
+
+charts:
+  kpi_projection:
+    type: kpi
+    query: nowcast_kpis
+    value: projected_commencing
+    label: Projected 2027 CSP commencements
+    support:
+      value: vs_2026
+      label: vs 2026 census
+    style:
+      support:
+        format: percent_delta
+  kpi_low:
+    type: kpi
+    query: nowcast_kpis
+    value: projected_low
+    label: Low end of range
+  kpi_high:
+    type: kpi
+    query: nowcast_kpis
+    value: projected_high
+    label: High end of range
+  kpi_accuracy:
+    type: kpi
+    query: nowcast_kpis
+    value: backtest_mae
+    label: Average past error at this week
+  projection_chart:
+    type: line
+    query: projection
+    title: The projection firms up as applications arrive
+    subtitle: Projected final commencements by week of the 2027 cycle, with the range from past years
+    x: week_of_cycle
+    y: [projected_low, projected_commencing, projected_high, census_2026]
+    field_labels:
+      week_of_cycle: Week of cycle
+      projected_low: Low
+      projected_commencing: Projection
+      projected_high: High
+      census_2026: 2026 census
+  curves:
+    type: line
+    query: app_curves
+    title: Cumulative applications by intake year
+    subtitle: 2027 is running ahead of every recent cycle
+    x: week_of_cycle
+    y: applications_cum
+    color: intake
+    field_labels:
+      week_of_cycle: Week of cycle
+      applications_cum: Applications
+      intake: Intake
+  backtest_table:
+    type: table
+    query: backtest
+
+rows:
+  - cols: [kpi_projection, kpi_low, kpi_high, kpi_accuracy]
+  - cols: [projection_chart, curves]
+  - title: "How good is this method? Each past year predicted at the same week, using only the other years"
+    rows: [backtest_table]

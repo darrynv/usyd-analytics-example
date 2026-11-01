@@ -1,0 +1,34 @@
+course_code,course_name,faculty_code,course_level,funding_cluster,duration_years,domestic_funding_type
+ART-BA,Bachelor of Arts,ART,UG,C1,3,CSP
+ART-BED,Bachelor of Education,ART,UG,C2,4,CSP
+ART-MTEACH,Master of Teaching,ART,PGCW,C2,2,CSP
+ART-MIR,Master of International Relations,ART,PGCW,C1,2,DFEE
+ART-PHD,Doctor of Philosophy (Arts),ART,HDR,C1,4,RTP
+BUS-BCOM,Bachelor of Commerce,BUS,UG,C1,3,CSP
+BUS-MCOM,Master of Commerce,BUS,PGCW,C1,2,DFEE
+BUS-MBA,Master of Business Administration,BUS,PGCW,C1,2,DFEE
+BUS-MPA,Master of Professional Accounting,BUS,PGCW,C1,2,DFEE
+BUS-PHD,Doctor of Philosophy (Business),BUS,HDR,C1,4,RTP
+ENG-BE,Bachelor of Engineering Honours,ENG,UG,C3,4,CSP
+ENG-BADVC,Bachelor of Advanced Computing,ENG,UG,C2,4,CSP
+ENG-MPE,Master of Professional Engineering,ENG,PGCW,C3,2,DFEE
+ENG-MDS,Master of Data Science,ENG,PGCW,C2,2,DFEE
+ENG-PHD,Doctor of Philosophy (Engineering),ENG,HDR,C3,4,RTP
+SCI-BSC,Bachelor of Science,SCI,UG,C3,3,CSP
+SCI-BPSYC,Bachelor of Psychology,SCI,UG,C2,4,CSP
+SCI-BVS,Bachelor of Veterinary Science,SCI,UG,C4,5,CSP
+SCI-MENV,Master of Environmental Science,SCI,PGCW,C3,2,DFEE
+SCI-PHD,Doctor of Philosophy (Science),SCI,HDR,C3,4,RTP
+MED-MD,Doctor of Medicine,MED,PGCW,C4,4,CSP
+MED-BN,Bachelor of Nursing,MED,UG,C2,3,CSP
+MED-BPHARM,Bachelor of Pharmacy,MED,UG,C3,4,CSP
+MED-MPH,Master of Public Health,MED,PGCW,C3,2,DFEE
+MED-PHD,Doctor of Philosophy (Medicine),MED,HDR,C4,4,RTP
+LAW-LLB,Bachelor of Laws,LAW,UG,C1,5,CSP
+LAW-JD,Juris Doctor,LAW,PGCW,C1,3,DFEE
+LAW-LLM,Master of Laws,LAW,PGCW,C1,2,DFEE
+ADP-BDESARCH,Bachelor of Design in Architecture,ADP,UG,C3,3,CSP
+ADP-MARCH,Master of Architecture,ADP,PGCW,C3,2,DFEE
+ADP-MURBPL,Master of Urban Planning,ADP,PGCW,C3,2,DFEE
+MUS-BMUS,Bachelor of Music,MUS,UG,C1,4,CSP
+MUS-MMUS,Master of Music Studies,MUS,PGCW,C1,2,DFEE

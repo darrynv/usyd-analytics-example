@@ -1,0 +1,3 @@
+# Defaults for every board under charts/
+source: warehouse
+extends: paper

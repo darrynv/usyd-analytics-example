@@ -1,0 +1,73 @@
+version: 2
+
+models:
+  - name: dim_faculty
+    description: Faculties (generic, synthetic).
+    columns:
+      - name: faculty_code
+        data_tests: [unique, not_null]
+
+  - name: dim_course
+    description: Courses with faculty, level (UG/PGCW/HDR) and CSP funding cluster.
+    columns:
+      - name: course_code
+        data_tests: [unique, not_null]
+      - name: course_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [UG, PGCW, HDR]
+
+  - name: dim_version
+    description: Load-profile versions - Actuals, Budgets and quarterly Forecasts.
+    columns:
+      - name: version_code
+        data_tests: [unique, not_null]
+
+  - name: fct_load_profile
+    description: >
+      Annual load profile per version x year x course x citizenship. Headcount = commencing intake +
+      continuing base x retention; EFTSL = headcount x load per student; revenue = EFTSL x revenue per EFTSL.
+      The grain the what-if board recalculates from.
+    columns:
+      - name: citizenship
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Domestic, International]
+      - name: funding_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [CSP, DFEE, RTP, INTL]
+      - name: version_code
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_version')
+                field: version_code
+
+  - name: fct_load_actuals_term
+    description: Census actuals by semester (2019 S1 - 2026 S1), with equity-group headcounts for domestic students.
+
+  - name: fct_load_variance
+    description: >
+      Diagnostic bridge between two versions per cell. EFTSL variance splits exactly into intake volume,
+      intake mix, retention and load-per-student effects; revenue adds a fee/funding rate effect.
+
+  - name: fct_variance_bridge
+    description: Long-form variance bridge (comparison x faculty x driver) for waterfall charts.
+
+  - name: fct_assumption_changes
+    description: Every assumption that changed between two versions, with its EFTSL and revenue impact.
+
+  - name: fct_csp_nowcast
+    description: >
+      Predictive nowcast of final domestic CSP undergraduate commencements from cumulative applications,
+      with a min-max band and a leave-one-out backtest for completed cycles.
+
+  - name: fct_cap_position
+    description: Each 2026 plan version against CSP cluster envelopes, the international planning level and equity targets.
+
+  - name: fct_intake_recommendations
+    description: Prescriptive intake actions (rule-based) to bring each 2026 version within caps and targets.

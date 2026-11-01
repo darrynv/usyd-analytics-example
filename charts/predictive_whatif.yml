@@ -1,0 +1,181 @@
+title: "Predictive: what if our planning assumptions change?"
+text: |
+  **Synthetic data.**
+  Move the sliders. The 2026 load profile is recalculated in the warehouse from its underlying assumptions
+  (intake, international mix, retention). No re-run of the planning model is needed.
+
+  **International share of commencements: {{ queries.scenario_totals.one.intl_share_text }}.**
+  International commencements {{ queries.scenario_totals.one.cap_text }}.
+
+variables:
+  version:
+    label: Starting point
+    default: Q2F26
+    options:
+      query: version_options
+      column: version_code
+      label_column: version_name
+  intl_mix_pp:
+    label: International share of intake (change, percentage points)
+    min: -20
+    max: 10
+    step: 1
+    default: 0
+  intake_pct:
+    label: Total commencing intake (change, %)
+    min: -15
+    max: 15
+    step: 1
+    default: 0
+  retention_pp:
+    label: Retention (change, percentage points)
+    min: -5
+    max: 5
+    step: 0.5
+    default: 0
+
+queries:
+  version_options:
+    sql: |
+      select version_code, version_name from {{ ref('dim_version') }}
+      where plan_year = 2026 order by sort_order
+
+  scenario:
+    sql: |
+      with base as (
+        select *
+        from {{ ref('fct_load_profile') }}
+        where plan_year = 2026 and {{ filter('version_code', version) }}
+      ),
+      share as (
+        select sum(commencing_intake) filter (where citizenship = 'International') / sum(commencing_intake) as share_b
+        from base
+      ),
+      s as (
+        select base.*, share.share_b,
+               least(0.95, greatest(0.05, share.share_b + {{ intl_mix_pp }} / 100.0)) as share_s
+        from base cross join share
+      ),
+      calc as (
+        select s.*,
+               commencing_intake * (1 + {{ intake_pct }} / 100.0)
+                 * case when citizenship = 'International' then share_s / share_b
+                        else (1 - share_s) / (1 - share_b) end as intake_s,
+               least(1.0, greatest(0.0, retention_rate + {{ retention_pp }} / 100.0)) as retention_s
+        from s
+      )
+      select faculty_name, citizenship, commencing_intake, intake_s, eftsl, revenue,
+             (intake_s + continuing_base_hc * retention_s) * load_per_student as eftsl_s,
+             (intake_s + continuing_base_hc * retention_s) * load_per_student * revenue_per_eftsl as revenue_s
+      from calc
+
+  scenario_totals:
+    sql: |
+      with t as (
+        select sum(eftsl) as eftsl_b, sum(eftsl_s) as eftsl_s,
+               sum(revenue) as revenue_b, sum(revenue_s) as revenue_s,
+               sum(commencing_intake) filter (where citizenship = 'International') / sum(commencing_intake) as share_b,
+               sum(intake_s) filter (where citizenship = 'International') / sum(intake_s) as share_s,
+               sum(intake_s) filter (where citizenship = 'International') as intl_intake_s
+        from {{ queries.scenario }}
+      ),
+      cap as (
+        select target_value from {{ ref('fct_cap_position') }} where cap_code = 'INTL-COMM' limit 1
+      )
+      select t.eftsl_s, t.eftsl_s - t.eftsl_b as eftsl_change,
+             t.revenue_s, t.revenue_s - t.revenue_b as revenue_change,
+             t.intl_intake_s, cap.target_value - t.intl_intake_s as cap_headroom,
+             to_char(t.share_b * 100, 'FM990.0') || '% in the plan, ' || to_char(t.share_s * 100, 'FM990.0') || '% in this scenario' as intl_share_text,
+             case when t.intl_intake_s > cap.target_value
+                  then 'are **' || to_char(t.intl_intake_s - cap.target_value, 'FM999,990') || ' over** the government cap of ' || to_char(cap.target_value, 'FM999,990')
+                  else 'leave ' || to_char(cap.target_value - t.intl_intake_s, 'FM999,990') || ' places of headroom under the cap of ' || to_char(cap.target_value, 'FM999,990')
+             end as cap_text
+      from t cross join cap
+    formats:
+      eftsl_s: integer
+      eftsl_change: delta
+      revenue_s: currency_compact
+      revenue_change: currency_compact
+      intl_intake_s: integer
+      cap_headroom: delta
+
+  scenario_by_faculty:
+    sql: |
+      select faculty_name, sum(revenue) as plan_revenue, sum(revenue_s) as scenario_revenue
+      from {{ queries.scenario }}
+      group by 1
+      order by 2 desc
+    formats:
+      plan_revenue: currency_compact
+      scenario_revenue: currency_compact
+
+  scenario_by_citizenship:
+    sql: |
+      select citizenship, sum(eftsl) as plan_eftsl, sum(eftsl_s) as scenario_eftsl
+      from {{ queries.scenario }}
+      group by 1
+      order by 1
+    formats:
+      plan_eftsl: integer
+      scenario_eftsl: integer
+
+charts:
+  kpi_eftsl:
+    type: kpi
+    query: scenario_totals
+    value: eftsl_s
+    label: Scenario EFTSL
+    support:
+      value: eftsl_change
+      label: vs plan
+    style:
+      support:
+        format: delta
+  kpi_revenue:
+    type: kpi
+    query: scenario_totals
+    value: revenue_s
+    label: Scenario revenue
+    support:
+      value: revenue_change
+      label: vs plan
+    style:
+      support:
+        format: currency_compact
+  kpi_intl:
+    type: kpi
+    query: scenario_totals
+    value: intl_intake_s
+    label: International commencements
+    support:
+      value: cap_headroom
+      label: headroom under the cap
+    style:
+      support:
+        format: delta
+  faculty_revenue:
+    type: bar
+    query: scenario_by_faculty
+    title: Revenue by faculty, plan vs scenario
+    x: faculty_name
+    y: [plan_revenue, scenario_revenue]
+    field_labels:
+      faculty_name: Faculty
+      plan_revenue: Plan
+      scenario_revenue: Scenario
+    style:
+      orientation: horizontal
+  citizenship_eftsl:
+    type: bar
+    query: scenario_by_citizenship
+    title: EFTSL by citizenship, plan vs scenario
+    x: citizenship
+    y: [plan_eftsl, scenario_eftsl]
+    field_labels:
+      citizenship: Citizenship
+      plan_eftsl: Plan
+      scenario_eftsl: Scenario
+
+rows:
+  - cols: [kpi_eftsl, kpi_revenue, kpi_intl]
+  - cols: [faculty_revenue, citizenship_eftsl]

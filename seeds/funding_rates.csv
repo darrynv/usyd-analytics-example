@@ -1,0 +1,33 @@
+plan_year,cluster_code,cluster_name,cgs_per_eftsl,student_contribution_per_eftsl
+2019,C1,"Law, business, humanities, creative arts",1058,13823
+2019,C2,"Education, nursing, IT, psychology",12196,3822
+2019,C3,"Science, engineering, health, built environment",15042,7318
+2019,C4,"Medicine, dentistry, veterinary science",24393,10977
+2020,C1,"Law, business, humanities, creative arts",1090,14237
+2020,C2,"Education, nursing, IT, psychology",12562,3936
+2020,C3,"Science, engineering, health, built environment",15493,7537
+2020,C4,"Medicine, dentistry, veterinary science",25125,11306
+2021,C1,"Law, business, humanities, creative arts",1122,14664
+2021,C2,"Education, nursing, IT, psychology",12939,4054
+2021,C3,"Science, engineering, health, built environment",15958,7763
+2021,C4,"Medicine, dentistry, veterinary science",25878,11645
+2022,C1,"Law, business, humanities, creative arts",1156,15104
+2022,C2,"Education, nursing, IT, psychology",13327,4176
+2022,C3,"Science, engineering, health, built environment",16437,7996
+2022,C4,"Medicine, dentistry, veterinary science",26655,11995
+2023,C1,"Law, business, humanities, creative arts",1191,15557
+2023,C2,"Education, nursing, IT, psychology",13727,4301
+2023,C3,"Science, engineering, health, built environment",16930,8236
+2023,C4,"Medicine, dentistry, veterinary science",27454,12354
+2024,C1,"Law, business, humanities, creative arts",1226,16024
+2024,C2,"Education, nursing, IT, psychology",14139,4430
+2024,C3,"Science, engineering, health, built environment",17438,8483
+2024,C4,"Medicine, dentistry, veterinary science",28278,12725
+2025,C1,"Law, business, humanities, creative arts",1263,16505
+2025,C2,"Education, nursing, IT, psychology",14563,4563
+2025,C3,"Science, engineering, health, built environment",17961,8738
+2025,C4,"Medicine, dentistry, veterinary science",29126,13107
+2026,C1,"Law, business, humanities, creative arts",1301,17000
+2026,C2,"Education, nursing, IT, psychology",15000,4700
+2026,C3,"Science, engineering, health, built environment",18500,9000
+2026,C4,"Medicine, dentistry, veterinary science",30000,13500
