@@ -1,0 +1,25 @@
+title: "Smoke test: total EFTSL by year"
+text: |
+  A minimal board to check the warehouse, dbt Charts and the connection end to end. **Synthetic data.**
+
+queries:
+  eftsl_by_year:
+    sql: |
+      select plan_year::text as year, sum(eftsl) as eftsl
+      from analytics.fct_load_profile
+      where version_code = 'ACT'
+      group by 1
+      order by 1
+    formats:
+      eftsl: integer
+
+charts:
+  eftsl_by_year:
+    type: bar
+    query: eftsl_by_year
+    title: Total EFTSL by year
+    subtitle: Census actuals, all faculties
+    x: year
+    y: eftsl
+    field_labels:
+      eftsl: EFTSL
