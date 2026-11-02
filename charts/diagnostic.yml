@@ -31,11 +31,11 @@ queries:
   comparison_options:
     sql: |
       select distinct comparison_code, comparison_name
-      from {{ ref('fct_load_variance') }}
+      from analytics.fct_load_variance
       order by comparison_code
 
   faculty_options:
-    sql: select faculty_name from {{ ref('dim_faculty') }} order by faculty_name
+    sql: select faculty_name from analytics.dim_faculty order by faculty_name
 
   totals:
     sql: |
@@ -46,7 +46,7 @@ queries:
              sum(revenue_c) as revenue_compare,
              sum(revenue_variance) as revenue_variance,
              sum(revenue_variance) / sum(revenue_b) as revenue_variance_pct
-      from {{ ref('fct_load_variance') }}
+      from analytics.fct_load_variance
       where {{ filter('comparison_code', comparison) }}
         and {{ filter('faculty_name', faculty) }}
     formats:
@@ -62,7 +62,7 @@ queries:
     sql: |
       with d as (
         select driver, sum(revenue_effect) as rev, sum(eftsl_effect) as eftsl
-        from {{ ref('fct_variance_bridge') }}
+        from analytics.fct_variance_bridge
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
         group by 1
@@ -70,7 +70,7 @@ queries:
       top_driver as (select * from d order by abs(rev) desc limit 1),
       f as (
         select faculty_name, sum(revenue_effect) as rev
-        from {{ ref('fct_variance_bridge') }}
+        from analytics.fct_variance_bridge
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
         group by 1
@@ -88,7 +88,7 @@ queries:
     sql: |
       with d as (
         select driver_order, driver, sum(eftsl_effect) as effect
-        from {{ ref('fct_variance_bridge') }}
+        from analytics.fct_variance_bridge
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
           and driver <> 'Fee and funding rates'
@@ -96,7 +96,7 @@ queries:
       ),
       t as (
         select sum(eftsl_b) as base, sum(eftsl_c) as comp
-        from {{ ref('fct_load_variance') }}
+        from analytics.fct_load_variance
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
       ),
@@ -118,14 +118,14 @@ queries:
     sql: |
       with d as (
         select driver_order, driver, sum(revenue_effect) as effect
-        from {{ ref('fct_variance_bridge') }}
+        from analytics.fct_variance_bridge
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
         group by 1, 2
       ),
       t as (
         select sum(revenue_b) as base, sum(revenue_c) as comp
-        from {{ ref('fct_load_variance') }}
+        from analytics.fct_load_variance
         where {{ filter('comparison_code', comparison) }}
           and {{ filter('faculty_name', faculty) }}
       ),
@@ -146,7 +146,7 @@ queries:
   by_faculty:
     sql: |
       select faculty_name, driver, sum(eftsl_effect) as eftsl_effect
-      from {{ ref('fct_variance_bridge') }}
+      from analytics.fct_variance_bridge
       where {{ filter('comparison_code', comparison) }}
         and {{ filter('faculty_name', faculty) }}
         and driver <> 'Fee and funding rates'
@@ -160,7 +160,7 @@ queries:
       select course_name as course, citizenship as citizenship,
              round(eftsl_b) as base_eftsl, round(eftsl_c) as compared_eftsl,
              round(eftsl_variance) as eftsl_change, revenue_variance as revenue_change
-      from {{ ref('fct_load_variance') }}
+      from analytics.fct_load_variance
       where {{ filter('comparison_code', comparison) }}
         and {{ filter('faculty_name', faculty) }}
       order by abs(revenue_variance) desc
@@ -176,7 +176,7 @@ queries:
       select course_name as course, citizenship as citizenship, assumption as assumption,
              round(base_value, 3) as was, round(compare_value, 3) as now,
              change_pct as change, revenue_impact as revenue_impact
-      from {{ ref('fct_assumption_changes') }}
+      from analytics.fct_assumption_changes
       where {{ filter('comparison_code', comparison) }}
         and {{ filter('faculty_name', faculty) }}
       order by abs(revenue_impact) desc

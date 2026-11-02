@@ -21,7 +21,7 @@ variables:
 queries:
   version_options:
     sql: |
-      select version_code, version_name from {{ ref('dim_version') }}
+      select version_code, version_name from analytics.dim_version
       where plan_year = 2026 order by sort_order
 
   kpis:
@@ -32,7 +32,7 @@ queries:
         coalesce(sum(unfunded_cgs_revenue), 0) as unfunded_revenue,
         max(target_value - plan_value) filter (where cap_code = 'INTL-COMM') as intl_headroom,
         max(plan_value) filter (where cap_code = 'EQ-LOWSES') as low_ses_share
-      from {{ ref('fct_cap_position') }}
+      from analytics.fct_cap_position
       where {{ filter('version_code', version) }}
     formats:
       caps_missed: integer
@@ -43,7 +43,7 @@ queries:
   read_out:
     sql: |
       with r as (
-        select * from {{ ref('fct_intake_recommendations') }} where {{ filter('version_code', version) }}
+        select * from analytics.fct_intake_recommendations where {{ filter('version_code', version) }}
       )
       select format(
         '**Recommended moves:** %s CSP places from over-envelope clusters to clusters with headroom (%s), and %s spare international places (%s). Equity targets need %s more commencements from under-represented groups within the planned intake.',
@@ -60,7 +60,7 @@ queries:
   csp_clusters:
     sql: |
       select 'Cluster ' || scope_code as cluster, plan_value as planned_eftsl, target_value as envelope, status
-      from {{ ref('fct_cap_position') }}
+      from analytics.fct_cap_position
       where {{ filter('version_code', version) }} and cap_type = 'CSP funding envelope'
       order by scope_code
     formats:
@@ -71,7 +71,7 @@ queries:
     sql: |
       select replace(measure, ' share of domestic UG commencements', '') as equity_group,
              plan_value as planned_share, target_value as target_share
-      from {{ ref('fct_cap_position') }}
+      from analytics.fct_cap_position
       where {{ filter('version_code', version) }} and cap_type = 'Equity target'
       order by measure
     formats:
@@ -83,7 +83,7 @@ queries:
       select faculty_name,
              greatest(sum(commencing_intake) * {{ low_ses_target }} / 100.0 - sum(commencing_intake * low_ses_share), 0) as places_needed,
              sum(commencing_intake * low_ses_share) / sum(commencing_intake) as current_share
-      from {{ ref('fct_load_profile') }}
+      from analytics.fct_load_profile
       where plan_year = 2026 and {{ filter('version_code', version) }}
         and citizenship = 'Domestic' and course_level = 'UG' and funding_type = 'CSP'
       group by 1
@@ -101,7 +101,7 @@ queries:
   actions:
     sql: |
       select priority, lever, scope_name as scope, action, places, eftsl_impact, revenue_impact
-      from {{ ref('fct_intake_recommendations') }}
+      from analytics.fct_intake_recommendations
       where {{ filter('version_code', version) }} and lever <> 'Equity target'
       order by priority
     formats:

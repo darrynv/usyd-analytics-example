@@ -18,22 +18,22 @@ queries:
   scope_options:
     sql: |
       select faculty_name from (
-        select distinct faculty_name, faculty_code = 'ALL' as is_all from {{ ref('fct_csp_nowcast') }}
+        select distinct faculty_name, faculty_code = 'ALL' as is_all from analytics.fct_csp_nowcast
       ) s order by is_all desc, faculty_name
 
   nowcast_kpis:
     sql: |
       with cur as (
-        select * from {{ ref('fct_csp_nowcast') }}
+        select * from analytics.fct_csp_nowcast
         where is_current_cycle and {{ filter('faculty_name', scope) }}
         order by week_of_cycle desc limit 1
       ),
       last_year as (
-        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        select max(census_commencing) as census from analytics.fct_csp_nowcast
         where intake_year = 2026 and {{ filter('faculty_name', scope) }}
       ),
       bt as (
-        select avg(abs(backtest_error_pct)) as mae from {{ ref('fct_csp_nowcast') }}
+        select avg(abs(backtest_error_pct)) as mae from analytics.fct_csp_nowcast
         where not is_current_cycle and week_of_cycle = (select week_of_cycle from cur)
           and {{ filter('faculty_name', scope) }}
       )
@@ -58,7 +58,7 @@ queries:
   app_curves:
     sql: |
       select week_of_cycle, intake_year::text as intake, applications_cum
-      from {{ ref('fct_csp_nowcast') }}
+      from analytics.fct_csp_nowcast
       where intake_year >= 2023 and {{ filter('faculty_name', scope) }}
       order by intake_year, week_of_cycle
     formats:
@@ -67,9 +67,9 @@ queries:
   projection:
     sql: |
       select n.week_of_cycle, n.projected_commencing, n.projected_low, n.projected_high, l.census as census_2026
-      from {{ ref('fct_csp_nowcast') }} n
+      from analytics.fct_csp_nowcast n
       cross join (
-        select max(census_commencing) as census from {{ ref('fct_csp_nowcast') }}
+        select max(census_commencing) as census from analytics.fct_csp_nowcast
         where intake_year = 2026 and {{ filter('faculty_name', scope) }}
       ) l
       where n.is_current_cycle and {{ filter('faculty_name', scope) }}
@@ -84,9 +84,9 @@ queries:
     sql: |
       select intake_year::text as intake_year, census_commencing, round(backtest_projection) as predicted_at_this_week,
              backtest_error_pct as error
-      from {{ ref('fct_csp_nowcast') }}
+      from analytics.fct_csp_nowcast
       where not is_current_cycle and {{ filter('faculty_name', scope) }}
-        and week_of_cycle = (select max(week_of_cycle) from {{ ref('fct_csp_nowcast') }} where is_current_cycle)
+        and week_of_cycle = (select max(week_of_cycle) from analytics.fct_csp_nowcast where is_current_cycle)
       order by intake_year
     formats:
       census_commencing: integer

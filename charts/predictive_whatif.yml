@@ -37,14 +37,14 @@ variables:
 queries:
   version_options:
     sql: |
-      select version_code, version_name from {{ ref('dim_version') }}
+      select version_code, version_name from analytics.dim_version
       where plan_year = 2026 order by sort_order
 
   scenario:
     sql: |
       with base as (
         select *
-        from {{ ref('fct_load_profile') }}
+        from analytics.fct_load_profile
         where plan_year = 2026 and {{ filter('version_code', version) }}
       ),
       share as (
@@ -80,7 +80,7 @@ queries:
         from {{ queries.scenario }}
       ),
       cap as (
-        select target_value from {{ ref('fct_cap_position') }} where cap_code = 'INTL-COMM' limit 1
+        select target_value from analytics.fct_cap_position where cap_code = 'INTL-COMM' limit 1
       )
       select t.eftsl_s, t.eftsl_s - t.eftsl_b as eftsl_change,
              t.revenue_s, t.revenue_s - t.revenue_b as revenue_change,

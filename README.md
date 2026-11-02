@@ -67,7 +67,6 @@ Prerequisites: [uv](https://docs.astral.sh/uv/) and `psql`.
 6. **Install dbt Charts and preview.**
    ```bash
    uv tool install "dbt-charts[postgresql]"
-   uv run --env-file .env dbt parse --profiles-dir .   # manifest for ref()
    set -a; . ./.env; set +a
    dct serve --port 8080                              # http://localhost:8080/diagnostic/ etc.
    ```
@@ -80,10 +79,19 @@ rewrite each bundled schema file in `dbt_charts/data/schemas/yaml/` with LF endi
 where the result matches its published sha256. Reinstalling the package undoes this.
 
 ## Hosting on dbtcharts.com
-Connect this repository to dbtcharts.com and add a Postgres connection that uses the
-**`dbtcharts_reader`** role through the Session pooler. Boards then render against the
-production marts, and readers need no warehouse login. `dct skills cloud-setup` walks through
-it from the terminal.
+The boards are published at `https://dbtcharts.com/university-of-sydney/usyd-analytics-example/`.
+Setup:
+1. Connect this GitHub repository as a project.
+2. Add a Postgres connection that uses the **`dbtcharts_reader`** role through the Session
+   pooler (schema `analytics`).
+3. Map the boards' source to it: `dct cloud source map warehouse <connection-slug>`.
+
+Readers need no warehouse login. `dct skills cloud-setup` walks through it from the terminal.
+
+Boards query the marts as `analytics.<model>` rather than `{{ ref('<model>') }}`. dbt Charts
+resolves `ref()` from a dbt `manifest.json`, which dbtcharts.com does not build. Fully
+qualified names render the same locally and in the cloud, with no generated artifacts to
+commit.
 
 ## Supabase notes
 - The `raw`, `staging` and `analytics` schemas are not exposed through the Supabase Data API;

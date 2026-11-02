@@ -15,7 +15,7 @@ variables:
 
 queries:
   faculty_options:
-    sql: select faculty_name from {{ ref('dim_faculty') }} order by faculty_name
+    sql: select faculty_name from analytics.dim_faculty order by faculty_name
 
   kpis:
     sql: |
@@ -23,7 +23,7 @@ queries:
         select plan_year,
                sum(eftsl) as eftsl,
                sum(commencing_intake) filter (where citizenship = 'International') / sum(commencing_intake) as intl_share
-        from {{ ref('fct_load_profile') }}
+        from analytics.fct_load_profile
         where version_code = 'ACT'
           and {{ filter('faculty_name', faculty) }}
           and {{ filter('citizenship', citizenship) }}
@@ -31,7 +31,7 @@ queries:
       ),
       s1 as (
         select census_year, sum(eftsl) as eftsl
-        from {{ ref('fct_load_actuals_term') }}
+        from analytics.fct_load_actuals_term
         where term = 'S1' and census_year in (2025, 2026)
           and {{ filter('faculty_name', faculty) }}
           and {{ filter('citizenship', citizenship) }}
@@ -55,7 +55,7 @@ queries:
   by_faculty:
     sql: |
       select make_date(plan_year, 1, 1) as year, faculty_name, sum(eftsl) as eftsl
-      from {{ ref('fct_load_profile') }}
+      from analytics.fct_load_profile
       where version_code = 'ACT'
         and {{ filter('faculty_name', faculty) }}
         and {{ filter('citizenship', citizenship) }}
@@ -67,7 +67,7 @@ queries:
   by_citizenship:
     sql: |
       select make_date(plan_year, 1, 1) as year, citizenship, sum(eftsl) as eftsl
-      from {{ ref('fct_load_profile') }}
+      from analytics.fct_load_profile
       where version_code = 'ACT'
         and {{ filter('faculty_name', faculty) }}
         and {{ filter('citizenship', citizenship) }}
@@ -80,7 +80,7 @@ queries:
     sql: |
       with f as (
         select plan_year, faculty_name, sum(eftsl) as eftsl
-        from {{ ref('fct_load_profile') }}
+        from analytics.fct_load_profile
         where version_code = 'ACT'
           and {{ filter('faculty_name', faculty) }}
           and {{ filter('citizenship', citizenship) }}
@@ -99,7 +99,7 @@ queries:
              sum(hc_low_ses)::numeric / sum(headcount) as low_ses,
              sum(hc_regional)::numeric / sum(headcount) as regional_remote,
              sum(hc_first_nations)::numeric / sum(headcount) as first_nations
-      from {{ ref('fct_load_actuals_term') }}
+      from analytics.fct_load_actuals_term
       where term = 'S1' and commencement_status = 'Commencing' and citizenship = 'Domestic'
         and course_level = 'UG' and funding_type = 'CSP'
         and {{ filter('faculty_name', faculty) }}
@@ -113,7 +113,7 @@ queries:
   semester_one:
     sql: |
       select census_year::text as census_year, course_level, sum(eftsl) as eftsl
-      from {{ ref('fct_load_actuals_term') }}
+      from analytics.fct_load_actuals_term
       where term = 'S1'
         and {{ filter('faculty_name', faculty) }}
         and {{ filter('citizenship', citizenship) }}
