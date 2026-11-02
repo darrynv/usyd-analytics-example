@@ -21,6 +21,7 @@ maps to a board, and how the variance bridge, what-if, nowcast and recommendatio
 | `predictive_nowcast` | Predictive | Final 2027 CSP commencements forecast from applications to date, with range and backtest |
 | `prescriptive` | Prescriptive | Position against CSP envelopes, the international cap and equity targets, with ranked intake actions |
 | `exec_summary` | Storytelling | One-page exec read-out with live numbers and AI-drafted commentary |
+| `dvt_example` | Predictive | Each faculty's 2027 CSP commencement forecast against its 2026 census, at a chosen forecast week, with gaps and risks |
 | `smoke_test` | Health check | One bar chart of total EFTSL by year, to confirm the connection end to end |
 
 ## Architecture

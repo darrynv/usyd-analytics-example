@@ -1,0 +1,270 @@
+title: "2027 CSP commencement forecast vs 2026 census, by faculty"
+text: |
+  **Synthetic data.** Domestic CSP undergraduate commencements (headcount, Semester 1 census). The 2027 forecast is the
+  applications nowcast from `fct_csp_nowcast`: applications to date × the average past conversion ratio at the same week,
+  with the lowest and highest past ratio as the range. Pick a forecast week to see how the picture looked at that point in the cycle.
+
+  **{{ queries.read_out.one.sentence }}**
+
+variables:
+  week:
+    input: select
+    label: Forecast week
+    notes: Week of the 2027 applications cycle the forecast is taken from (30 weeks in a full cycle).
+    options:
+      query: week_options
+      column: week_of_cycle
+      label_column: week_label
+    default: 14
+
+queries:
+  week_options:
+    sql: |
+      select week_of_cycle,
+             'Week ' || week_of_cycle
+               || case when week_of_cycle = max(week_of_cycle) over () then ' (latest)' else '' end as week_label
+      from (select distinct week_of_cycle from analytics.fct_csp_nowcast where is_current_cycle) w
+      order by week_of_cycle desc
+
+  # One row per faculty at the selected week, with 2026 census, backtest error and risk flags.
+  faculty_week:
+    sql: |
+      with census as (
+        select distinct faculty_code, intake_year, census_commencing
+        from analytics.fct_csp_nowcast
+        where census_commencing is not null
+      ),
+      yoy as (
+        select faculty_code, max(census_commencing::numeric / prev - 1) as max_past_growth
+        from (
+          select faculty_code, census_commencing,
+                 lag(census_commencing) over (partition by faculty_code order by intake_year) as prev
+          from census
+        ) c
+        group by 1
+      ),
+      bt as (
+        select faculty_code, avg(abs(backtest_error_pct)) as backtest_mae
+        from analytics.fct_csp_nowcast
+        where not is_current_cycle and week_of_cycle = {{ week }}
+        group by 1
+      ),
+      clusters as (
+        select faculty_code, string_agg(distinct cluster_code, ', ' order by cluster_code) as clusters
+        from analytics.dim_course
+        where course_level = 'UG' and domestic_funding_type = 'CSP'
+        group by 1
+      )
+      select n.faculty_code, n.faculty_name,
+             c.census_commencing as census_2026,
+             n.projected_commencing as forecast_2027,
+             n.projected_low, n.projected_high,
+             n.projected_commencing / c.census_commencing - 1 as growth,
+             n.projected_low / c.census_commencing - 1 as growth_low,
+             n.projected_high / c.census_commencing - 1 as growth_high,
+             bt.backtest_mae,
+             y.max_past_growth,
+             cl.clusters,
+             concat_ws('; ',
+               case when n.projected_low < c.census_commencing then 'Range includes a fall' end,
+               case when n.projected_commencing / c.census_commencing - 1 > y.max_past_growth
+                    then 'Above any year since 2019' end,
+               case when cl.clusters like '%C3%' and n.projected_commencing > c.census_commencing
+                    then 'Adds to C3, already over its CSP envelope' end
+             ) as flags
+      from analytics.fct_csp_nowcast n
+      join census c on c.faculty_code = n.faculty_code and c.intake_year = 2026
+      join bt on bt.faculty_code = n.faculty_code
+      join yoy y on y.faculty_code = n.faculty_code
+      left join clusters cl on cl.faculty_code = n.faculty_code
+      where n.is_current_cycle and n.week_of_cycle = {{ week }} and n.faculty_code <> 'ALL'
+
+  read_out:
+    sql: |
+      with f as (select * from {{ queries.faculty_week }}),
+      top as (select * from f order by growth desc limit 1),
+      uni as (
+        select n.projected_commencing / c.census - 1 as growth
+        from analytics.fct_csp_nowcast n
+        cross join (
+          select max(census_commencing) as census from analytics.fct_csp_nowcast
+          where intake_year = 2026 and faculty_code = 'ALL'
+        ) c
+        where n.is_current_cycle and n.faculty_code = 'ALL' and n.week_of_cycle = {{ week }}
+      )
+      select 'At week ' || {{ week }} || ', ' || top.faculty_name || ' has the strongest projected growth: '
+               || to_char(top.forecast_2027, 'FM999,990') || ' commencements vs ' || to_char(top.census_2026, 'FM999,990')
+               || ' in 2026 (' || to_char(top.growth * 100, 'FMS990.0') || '%, range '
+               || to_char(top.growth_low * 100, 'FMS990.0') || '% to ' || to_char(top.growth_high * 100, 'FMS990.0')
+               || '%). University-wide: ' || to_char(uni.growth * 100, 'FMS990.0') || '%.' as sentence,
+             top.faculty_name as top_faculty, top.growth as top_growth, uni.growth as uni_growth
+      from top cross join uni
+    formats:
+      top_growth: percent_delta
+      uni_growth: percent_delta
+
+  side_by_side:
+    sql: |
+      with f as (select * from {{ queries.faculty_week }})
+      select faculty_name, '2026 census' as series, census_2026::numeric as commencements, growth from f
+      union all
+      select faculty_name, '2027 forecast', round(forecast_2027), growth from f
+      order by growth desc, series
+    formats:
+      commencements: integer
+
+  growth_range:
+    sql: |
+      with f as (select * from {{ queries.faculty_week }})
+      select faculty_name, growth, growth_low, growth_high from f order by growth desc
+    formats:
+      growth: percent_delta
+      growth_low: percent_delta
+      growth_high: percent_delta
+
+  growth_by_week:
+    sql: |
+      select n.week_of_cycle, n.faculty_name,
+             n.projected_commencing / c.census_commencing - 1 as growth
+      from analytics.fct_csp_nowcast n
+      join (
+        select distinct faculty_code, census_commencing from analytics.fct_csp_nowcast where intake_year = 2026
+      ) c using (faculty_code)
+      where n.is_current_cycle and n.faculty_code <> 'ALL'
+      order by n.faculty_name, n.week_of_cycle
+    formats:
+      growth: percent_delta
+
+  detail:
+    sql: |
+      with f as (select * from {{ queries.faculty_week }})
+      select faculty_name, clusters, census_2026, round(forecast_2027) as forecast_2027,
+             round(projected_low) as low, round(projected_high) as high,
+             growth, backtest_mae, max_past_growth, nullif(flags, '') as flags
+      from f
+      order by growth desc
+    formats:
+      census_2026: integer
+      forecast_2027: integer
+      low: integer
+      high: integer
+      growth: percent_delta
+      backtest_mae: percent
+      max_past_growth: percent_delta
+
+charts:
+  kpi_top:
+    type: kpi
+    query: read_out
+    value: top_growth
+    label: "Strongest projected growth: {{ queries.read_out.one.top_faculty }}"
+  kpi_uni:
+    type: kpi
+    query: read_out
+    value: uni_growth
+    label: University-wide projected growth
+
+  comparison:
+    type: bar
+    query: side_by_side
+    title: 2027 forecast against 2026 census
+    subtitle: Domestic CSP undergraduate commencements, faculties ordered by projected growth
+    x: faculty_name
+    y: commencements
+    color: series
+    field_labels:
+      faculty_name: Faculty
+      commencements: Commencements
+      series: ""
+    style:
+      stack: none
+      orientation: horizontal
+
+  growth_chart:
+    type: bar
+    query: growth_range
+    title: Projected growth with the range from past years
+    subtitle: Bar spans the low-to-high range; dot is the central forecast
+    x: faculty_name
+    y: growth_high
+    y_start: growth_low
+    field_labels:
+      faculty_name: Faculty
+      growth_low: Low
+      growth_high: High
+      growth: Forecast
+    style:
+      orientation: horizontal
+      legend:
+        visible: false
+    layers:
+      - type: scatter
+        y: growth
+
+  ranking_over_time:
+    type: line
+    query: growth_by_week
+    title: Projected growth by forecast week
+    subtitle: Business led until week 10; Science has led since week 11
+    x: week_of_cycle
+    y: growth
+    color: faculty_name
+    field_labels:
+      week_of_cycle: Week of cycle
+      growth: Projected growth
+      faculty_name: Faculty
+
+  detail_table:
+    type: table
+    query: detail
+    style:
+      columns:
+        faculty_name: { label: Faculty }
+        clusters: { label: CSP clusters }
+        census_2026: { label: 2026 census }
+        forecast_2027: { label: 2027 forecast }
+        low: { label: Low }
+        high: { label: High }
+        growth: { label: Growth }
+        backtest_mae: { label: Past error }
+        max_past_growth: { label: Best year }
+        flags: { label: Flags }
+
+rows:
+  - cols: [kpi_top, kpi_uni]
+  - cols: [comparison, growth_chart]
+  - ranking_over_time
+  - title: Faculty detail at the selected week
+    rows: [detail_table]
+  - title: Gaps and risks in the current data
+    text: |
+      *Written from the data as at week 14, the latest week loaded.*
+
+      **The forecast has come down every week, so it may still be high.** At week 1 Science, Business and Engineering all
+      pointed to about +50% growth. By week 14 that is +15–20%, and the decline hasn't levelled off. 2027 applicants
+      seem to be applying earlier than in past cycles, and the method reads early applications as extra demand. The
+      university-wide forecast has dropped the same way, so treat today's +10% as an upper estimate until the curve flattens.
+
+      **Funding risk: growth is concentrated where the money is already capped.** Science and Engineering lead the growth,
+      and both teach in funding cluster C3. Every 2026 plan version already has C3 over its CSP envelope (about 101.5%,
+      roughly $1.8–2.1m of Commonwealth Grant Scheme funding not paid). More C3 commencements in 2027 means more unfunded places
+      unless intake is managed or the envelope grows.
+
+      **Science's forecast is outside anything seen before.** Its applications at week 14 are up 17% on 2026 and 29% above the
+      2019–2025 average. The method assumes this year's applicants convert like past years'. If the extra applications are
+      duplicates or lower-intent (more preferences per applicant), the forecast overstates. The low end of its range is still +14%.
+
+      **The leader depends on the week.** Business led until week 10. Its central forecast is still +15%, but its range runs
+      from −1% to +30% and its past error at week 14 is about 8%, roughly double Science's. Music's forecast is a fall
+      (−11%), but it is small and has the least reliable history (about 10% past error).
+
+      **Gaps in the data and method**
+      - *No 2027 caps or targets.* `caps_targets` only has 2026, so the forecast can't be tested against 2027 envelopes.
+      - *Headcount, not EFTSL.* Envelopes are set in EFTSL. Commencements alone don't show the load impact.
+      - *Applications only.* Offers and acceptances are in the data but not used. They are near zero at week 14, so they'll
+        only add information later in the cycle.
+      - *Thin history.* Eight past cycles, including the 2021 COVID spike. The range is the lowest-to-highest past ratio,
+        not a statistical confidence interval.
+      - *Faculty totals don't add up exactly.* Each faculty and the university total are forecast separately, so the faculty
+        forecasts sum to slightly more than the university forecast (about +44 at week 14).
+      - *Domestic CSP undergraduates only.* No postgraduate, international or full-fee view.
